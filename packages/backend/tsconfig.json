@@ -4,8 +4,8 @@
     "outDir": "dist",
     "rootDir": "src",
     "resolveJsonModule": true,
-    "types": ["node", "vitest/globals"]
+    "types": ["node"]
   },
   "include": ["src"],
-  "exclude": ["dist"]
+  "exclude": ["dist", "src/__tests__"]
 }

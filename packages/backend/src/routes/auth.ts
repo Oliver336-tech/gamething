@@ -1,24 +1,15 @@
 import { randomUUID } from 'crypto';
+
 import { Router } from 'express';
-import asyncHandler from 'express-async-handler';
-import bcrypt from 'bcryptjs';
-import jwt from 'jsonwebtoken';
-import { z } from 'zod';
 
 import env from '../config/env';
-import { authenticate, type AuthenticatedRequest } from '../middleware/auth';
 import { prisma, ensureRole } from '../db/client';
+import { asyncHandler } from '../lib/asyncHandler';
+import { hashPassword, signToken, verifyPassword, verifyToken } from '../lib/security';
+import { validateCredentials, validateRefresh } from '../lib/validation';
+import { authenticate, type AuthenticatedRequest } from '../middleware/auth';
 
 const router = Router();
-
-const credentialsSchema = z.object({
-  email: z.string().email(),
-  password: z.string().min(8, 'Password must be at least 8 characters'),
-});
-
-const refreshSchema = z.object({
-  refreshToken: z.string().min(1),
-});
 
 const normalizeRole = (email: string) => {
   if (env.ADMIN_EMAIL && email.toLowerCase() === env.ADMIN_EMAIL.toLowerCase()) {
@@ -28,19 +19,19 @@ const normalizeRole = (email: string) => {
 };
 
 const signAccessToken = (userId: string, email: string, role: string) => {
-  return jwt.sign({ sub: userId, email, role }, env.JWT_SECRET, {
-    expiresIn: `${env.ACCESS_TOKEN_TTL_MINUTES}m`,
-  });
+  return signToken({ sub: userId, email, role }, env.JWT_SECRET, env.ACCESS_TOKEN_TTL_MINUTES * 60);
 };
 
 const signRefreshToken = (userId: string, sessionId: string) => {
-  return jwt.sign({ sub: userId, type: 'refresh', sid: sessionId }, env.REFRESH_TOKEN_SECRET, {
-    expiresIn: `${env.REFRESH_TOKEN_TTL_DAYS}d`,
-  });
+  return signToken(
+    { sub: userId, type: 'refresh', sid: sessionId },
+    env.REFRESH_TOKEN_SECRET,
+    env.REFRESH_TOKEN_TTL_DAYS * 24 * 60 * 60,
+  );
 };
 
 const createSession = async (userId: string, refreshToken: string, sessionId: string) => {
-  const refreshTokenHash = await bcrypt.hash(refreshToken, 10);
+  const refreshTokenHash = await hashPassword(refreshToken);
   const expiresAt = new Date(Date.now() + env.REFRESH_TOKEN_TTL_DAYS * 24 * 60 * 60 * 1000);
 
   return prisma.session.create({
@@ -56,9 +47,9 @@ const createSession = async (userId: string, refreshToken: string, sessionId: st
 router.post(
   '/signup',
   asyncHandler(async (req, res) => {
-    const parsed = credentialsSchema.safeParse(req.body);
+    const parsed = validateCredentials(req.body);
     if (!parsed.success) {
-      return res.status(400).json({ message: 'Invalid input', issues: parsed.error.flatten() });
+      return res.status(400).json({ message: parsed.message });
     }
 
     const { email, password } = parsed.data;
@@ -69,7 +60,7 @@ router.post(
 
     const roleName = normalizeRole(email);
     const role = await ensureRole(roleName);
-    const passwordHash = await bcrypt.hash(password, 10);
+    const passwordHash = await hashPassword(password);
 
     const user = await prisma.user.create({
       data: {
@@ -96,9 +87,9 @@ router.post(
 router.post(
   '/login',
   asyncHandler(async (req, res) => {
-    const parsed = credentialsSchema.safeParse(req.body);
+    const parsed = validateCredentials(req.body);
     if (!parsed.success) {
-      return res.status(400).json({ message: 'Invalid input', issues: parsed.error.flatten() });
+      return res.status(400).json({ message: parsed.message });
     }
 
     const { email, password } = parsed.data;
@@ -107,7 +98,7 @@ router.post(
       return res.status(401).json({ message: 'Invalid credentials' });
     }
 
-    const isValid = await bcrypt.compare(password, user.passwordHash);
+    const isValid = await verifyPassword(password, user.passwordHash);
     if (!isValid) {
       return res.status(401).json({ message: 'Invalid credentials' });
     }
@@ -138,20 +129,24 @@ router.post(
 router.post(
   '/refresh',
   asyncHandler(async (req, res) => {
-    const parsed = refreshSchema.safeParse(req.body);
+    const parsed = validateRefresh(req.body);
     if (!parsed.success) {
-      return res.status(400).json({ message: 'Invalid input', issues: parsed.error.flatten() });
+      return res.status(400).json({ message: parsed.message });
     }
 
     const { refreshToken } = parsed.data;
-    let decoded: { sub: string; type: string; sid?: string };
+    let decoded: { sub?: string; type?: string; sid?: string };
     try {
-      decoded = jwt.verify(refreshToken, env.REFRESH_TOKEN_SECRET) as { sub: string; type: string; sid?: string };
-    } catch (error) {
+      decoded = verifyToken(refreshToken, env.REFRESH_TOKEN_SECRET) as {
+        sub?: string;
+        type?: string;
+        sid?: string;
+      };
+    } catch {
       return res.status(401).json({ message: 'Invalid or expired refresh token' });
     }
 
-    if (decoded.type !== 'refresh') {
+    if (decoded.type !== 'refresh' || !decoded.sub) {
       return res.status(400).json({ message: 'Invalid token type' });
     }
 
@@ -171,12 +166,15 @@ router.post(
       return res.status(401).json({ message: 'Session does not belong to user' });
     }
 
-    const matches = await bcrypt.compare(refreshToken, session.refreshTokenHash);
+    const matches = await verifyPassword(refreshToken, session.refreshTokenHash);
     if (!matches) {
       return res.status(401).json({ message: 'Invalid refresh token' });
     }
 
-    const user = await prisma.user.findUnique({ where: { id: decoded.sub }, include: { role: true } });
+    const user = await prisma.user.findUnique({
+      where: { id: decoded.sub },
+      include: { role: true },
+    });
     if (!user) {
       return res.status(401).json({ message: 'User not found' });
     }
@@ -185,7 +183,7 @@ router.post(
     await prisma.session.update({
       where: { id: session.id },
       data: {
-        refreshTokenHash: await bcrypt.hash(newRefreshToken, 10),
+        refreshTokenHash: await hashPassword(newRefreshToken),
         expiresAt: new Date(Date.now() + env.REFRESH_TOKEN_TTL_DAYS * 24 * 60 * 60 * 1000),
       },
     });
@@ -202,23 +200,23 @@ router.post(
 router.post(
   '/logout',
   asyncHandler(async (req, res) => {
-    const parsed = refreshSchema.safeParse(req.body);
+    const parsed = validateRefresh(req.body);
     if (!parsed.success) {
-      return res.status(400).json({ message: 'Invalid input', issues: parsed.error.flatten() });
+      return res.status(400).json({ message: parsed.message });
     }
 
     const { refreshToken } = parsed.data;
     let decoded: { sid?: string };
     try {
-      decoded = jwt.verify(refreshToken, env.REFRESH_TOKEN_SECRET) as { sid?: string };
-    } catch (error) {
+      decoded = verifyToken(refreshToken, env.REFRESH_TOKEN_SECRET) as { sid?: string };
+    } catch {
       return res.status(200).json({ message: 'Logged out' });
     }
 
     if (decoded.sid) {
       const session = await prisma.session.findUnique({ where: { id: decoded.sid } });
       if (session) {
-        const matches = await bcrypt.compare(refreshToken, session.refreshTokenHash);
+        const matches = await verifyPassword(refreshToken, session.refreshTokenHash);
         if (matches) {
           await prisma.session.delete({ where: { id: decoded.sid } });
         }
@@ -236,7 +234,10 @@ router.get(
     if (!req.user) {
       return res.status(401).json({ message: 'Unauthorized' });
     }
-    const user = await prisma.user.findUnique({ where: { id: req.user.id }, include: { role: true } });
+    const user = await prisma.user.findUnique({
+      where: { id: req.user.id },
+      include: { role: true },
+    });
     if (!user) {
       return res.status(404).json({ message: 'User not found' });
     }

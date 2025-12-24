@@ -14,15 +14,7 @@
     "resolveJsonModule": true,
     "allowSyntheticDefaultImports": true,
     "types": ["node"],
-    "baseUrl": ".",
-    "paths": {
-      "@gamething/shared": ["packages/shared/src/index.ts"],
-      "@gamething/engine": ["packages/engine/src/index.ts"],
-      "@shared/*": ["packages/shared/src/*"],
-      "@engine/*": ["packages/engine/src/*"],
-      "@backend/*": ["packages/backend/src/*"],
-      "@frontend/*": ["packages/frontend/src/*"]
-    }
+    "baseUrl": "."
   },
   "include": ["packages"],
   "exclude": ["node_modules", "dist", "build"]

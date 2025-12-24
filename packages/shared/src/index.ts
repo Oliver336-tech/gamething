@@ -109,7 +109,7 @@ export type RngSeed = {
   increment?: number;
 };
 
-export type RngState = RngSeed & {
+export type RngState = Required<RngSeed> & {
   last: number;
 };
 
@@ -145,7 +145,7 @@ export type SkillDefinition = {
 export type PassiveDefinition = {
   name: string;
   description: string;
-  onAction?: 'attack' | 'ability' | 'burst';
+  onAction?: 'attack' | 'ability' | 'burst' | 'defend';
   effect?: StatusEffect;
 };
 
