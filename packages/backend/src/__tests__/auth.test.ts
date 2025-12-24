@@ -10,8 +10,12 @@ process.env.REFRESH_TOKEN_TTL_DAYS = '1';
 
 const { prisma, closePrisma } = await import('../db/client');
 const { createBackendApp } = await import('../app');
+const { MatchmakingService } = await import('../services/matchmaking');
+const { ProgressionService } = await import('../services/progression');
 
-const { app } = createBackendApp();
+const progression = new ProgressionService();
+const matchmaking = new MatchmakingService(progression);
+const { app } = createBackendApp({ matchmaking, progression });
 
 const runMigrations = async () => {
   await prisma.$executeRawUnsafe(`
