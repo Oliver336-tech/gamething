@@ -82,12 +82,16 @@ const normalizeStatus = (status: StatusEffect): StatusEffect => {
 const getStatusStacks = (entity: Entity, type: StatusType): number =>
   (entity.statuses ?? [])
     .filter((status) => status.type === type)
-    .reduce((acc, cur) => acc + cur.stacks, 0);
+    .reduce<number>((acc, cur: StatusEffect) => acc + cur.stacks, 0);
 
 const getStatusPotency = (entity: Entity, type: StatusType): number =>
   (entity.statuses ?? [])
     .filter((status) => status.type === type)
-    .reduce((acc, cur) => acc + (cur.potency ?? statusDefaults[type].basePotency) * cur.stacks, 0);
+    .reduce<number>(
+      (acc, cur: StatusEffect) =>
+        acc + (cur.potency ?? statusDefaults[type].basePotency) * cur.stacks,
+      0,
+    );
 
 const mergeStatuses = (existing: StatusEffect[], incoming: StatusEffect[]): StatusEffect[] => {
   const combined = [...existing];
@@ -195,8 +199,8 @@ const updateChargeMeter = (
   delta: number,
 ): NonNullable<Entity['ce']> => {
   const nextCurrent = clamp(ce.current + delta, 0, MAX_CE);
-  const tier = ce.tiers.reduce(
-    (acc, threshold, index) => (nextCurrent >= threshold ? index + 1 : acc),
+  const tier = ce.tiers.reduce<number>(
+    (acc: number, threshold: number, index: number) => (nextCurrent >= threshold ? index + 1 : acc),
     0,
   );
   return { ...ce, current: nextCurrent, tier };
@@ -551,10 +555,11 @@ export const simulateRound = (
     const resolution = applyAction(currentState, action, normalizedConfig);
     currentState = advanceTurn(resolution.newState, normalizedConfig);
 
-    const actorsAlive = Object.values(currentState.entities).some(
+    const entities = Object.values(currentState.entities) as Entity[];
+    const actorsAlive = entities.some(
       (entity) => entity.stats.health > 0 && entity.isPlayerControlled,
     );
-    const enemiesAlive = Object.values(currentState.entities).some(
+    const enemiesAlive = entities.some(
       (entity) => entity.stats.health > 0 && !entity.isPlayerControlled,
     );
 
