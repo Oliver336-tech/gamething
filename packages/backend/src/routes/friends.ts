@@ -1,13 +1,8 @@
 import { Router } from 'express';
-import asyncHandler from 'express-async-handler';
-import { z } from 'zod';
 
-import { authenticate, type AuthenticatedRequest } from '../middleware/auth';
 import { prisma } from '../db/client';
-
-const requestSchema = z.object({
-  email: z.string().email(),
-});
+import { asyncHandler } from '../lib/asyncHandler';
+import { authenticate, type AuthenticatedRequest } from '../middleware/auth';
 
 export const createFriendsRouter = () => {
   const router = Router();
@@ -24,7 +19,7 @@ export const createFriendsRouter = () => {
         include: { requester: true, addressee: true },
       });
 
-      const formatted = friendships.map((friendship) => ({
+      const formatted = friendships.map((friendship: any) => ({
         id: friendship.id,
         status: friendship.status,
         requester: { id: friendship.requesterId, email: friendship.requester.email },
@@ -43,7 +38,7 @@ export const createFriendsRouter = () => {
         where: { expiresAt: { gt: now } },
         include: { user: true },
       });
-      const presence = sessions.map((session) => ({
+      const presence = sessions.map((session: any) => ({
         userId: session.userId,
         email: session.user.email,
         online: true,
@@ -55,14 +50,17 @@ export const createFriendsRouter = () => {
   router.post(
     '/request',
     asyncHandler(async (req: AuthenticatedRequest, res) => {
-      const parsed = requestSchema.safeParse(req.body);
-      if (!parsed.success || !req.user) {
+      if (!req.user) return res.status(401).json({ message: 'Unauthorized' });
+      const email =
+        typeof req.body?.email === 'string' && req.body.email.includes('@') ? req.body.email : null;
+      if (!email) {
         return res.status(400).json({ message: 'Invalid payload' });
       }
 
-      const target = await prisma.user.findUnique({ where: { email: parsed.data.email } });
+      const target = await prisma.user.findUnique({ where: { email } });
       if (!target) return res.status(404).json({ message: 'User not found' });
-      if (target.id === req.user.id) return res.status(400).json({ message: 'Cannot friend yourself' });
+      if (target.id === req.user.id)
+        return res.status(400).json({ message: 'Cannot friend yourself' });
 
       const existing = await prisma.friendship.findFirst({
         where: {
@@ -94,7 +92,8 @@ export const createFriendsRouter = () => {
       if (!req.user) return res.status(401).json({ message: 'Unauthorized' });
       const friendship = await prisma.friendship.findUnique({ where: { id: req.params.id } });
       if (!friendship) return res.status(404).json({ message: 'Friendship not found' });
-      if (friendship.addresseeId !== req.user.id) return res.status(403).json({ message: 'Not allowed' });
+      if (friendship.addresseeId !== req.user.id)
+        return res.status(403).json({ message: 'Not allowed' });
 
       const updated = await prisma.friendship.update({
         where: { id: req.params.id },

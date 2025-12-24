@@ -2,6 +2,7 @@ import { randomUUID } from 'crypto';
 import { EventEmitter } from 'events';
 
 import { prisma } from '../db/client';
+
 import type { ProgressionService } from './progression';
 
 export type QueueKind = 'public' | 'ranked' | 'private';
@@ -99,14 +100,19 @@ export class MatchmakingService extends EventEmitter {
   }
 
   async recordResult(matchId: string, winnerId?: string) {
-    const matchRecords = await prisma.match.findMany({ where: { id: { startsWith: `${matchId}-` } } });
+    const matchRecords = await prisma.match.findMany({
+      where: { id: { startsWith: `${matchId}-` } },
+    });
     await prisma.match.updateMany({
       where: { id: { startsWith: `${matchId}-` } },
       data: { status: 'completed', winnerId },
     });
     if (winnerId) {
       await this.progression.addTrophies(winnerId, 25);
-      this.bumpRatings(matchRecords.map((m) => m.participantId), winnerId);
+      this.bumpRatings(
+        matchRecords.map((m: any) => m.participantId),
+        winnerId,
+      );
     }
   }
 
@@ -119,7 +125,9 @@ export class MatchmakingService extends EventEmitter {
           OR: [{ requesterId: userId }, { addresseeId: userId }],
         },
       });
-      const friendIds = friends.map((f) => (f.requesterId === userId ? f.addresseeId : f.requesterId));
+      const friendIds = friends.map((f: any) =>
+        f.requesterId === userId ? f.addresseeId : f.requesterId,
+      );
       const ids = [...new Set([userId, ...friendIds])];
       const entries = await prisma.leaderboardEntry.findMany({
         where: { userId: { in: ids } },
@@ -128,7 +136,7 @@ export class MatchmakingService extends EventEmitter {
         orderBy: { score: 'desc' },
         include: { user: true },
       });
-      return entries.map((entry) => ({
+      return entries.map((entry: any) => ({
         userId: entry.userId,
         score: entry.score,
         rank: entry.rank,
@@ -142,7 +150,7 @@ export class MatchmakingService extends EventEmitter {
       orderBy: { score: 'desc' },
       include: { user: true },
     });
-    return entries.map((entry) => ({
+    return entries.map((entry: any) => ({
       userId: entry.userId,
       score: entry.score,
       rank: entry.rank,
@@ -156,15 +164,17 @@ export class MatchmakingService extends EventEmitter {
     if (!winner) return;
 
     for (const player of players) {
-      const expected =
-        1 / (1 + 10 ** ((winner.mmr - player.mmr) / 400));
+      const expected = 1 / (1 + 10 ** ((winner.mmr - player.mmr) / 400));
       const score = player.id === winnerId ? 1 : 0;
       const next = Math.round(player.mmr + K_FACTOR * (score - expected));
       this.ratings.set(player.id, next);
     }
   }
 
-  private async tryMatch(queue: QueueKind, invite?: { hostId: string; inviteeId?: string; ticketId: string; queue: QueueKind }) {
+  private async tryMatch(
+    queue: QueueKind,
+    invite?: { hostId: string; inviteeId?: string; ticketId: string; queue: QueueKind },
+  ) {
     const pool = this.queues[queue];
     if (queue === 'private' && invite?.inviteeId) {
       this.queues.private = this.queues.private.filter(
@@ -174,13 +184,18 @@ export class MatchmakingService extends EventEmitter {
         { userId: invite.hostId, mmr: this.getRating(invite.hostId) },
         { userId: invite.inviteeId, mmr: this.getRating(invite.inviteeId) },
       ];
-      this.createMatch(players, queue, [invite.ticketId, this.findTicketId(invite.inviteeId, queue)]);
+      const inviteTicketIds = [invite.ticketId, this.findTicketId(invite.inviteeId, queue)].filter(
+        Boolean,
+      ) as string[];
+      this.createMatch(players, queue, inviteTicketIds);
       return;
     }
 
     while (pool.length >= 2) {
       const players = pool.splice(0, 2);
-      const ticketIds = players.map((p) => this.findTicketId(p.userId, queue)).filter(Boolean) as string[];
+      const ticketIds = players
+        .map((p) => this.findTicketId(p.userId, queue))
+        .filter(Boolean) as string[];
       this.createMatch(players, queue, ticketIds);
     }
   }

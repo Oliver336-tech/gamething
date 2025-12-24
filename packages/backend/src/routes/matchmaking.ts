@@ -1,20 +1,14 @@
 import { Router } from 'express';
-import asyncHandler from 'express-async-handler';
-import { z } from 'zod';
 
+import { asyncHandler } from '../lib/asyncHandler';
 import { authenticate, type AuthenticatedRequest } from '../middleware/auth';
 import type { MatchmakingService } from '../services/matchmaking';
 import type { ProgressionService } from '../services/progression';
 
-const enqueueSchema = z.object({
-  queue: z.enum(['public', 'ranked', 'private']).default('public'),
-});
-
-const inviteSchema = z.object({
-  queue: z.enum(['public', 'ranked', 'private']).default('private'),
-});
-
-export const createMatchmakingRouter = (matchmaking: MatchmakingService, progression: ProgressionService) => {
+export const createMatchmakingRouter = (
+  matchmaking: MatchmakingService,
+  progression: ProgressionService,
+) => {
   const router = Router();
 
   router.use(authenticate);
@@ -22,11 +16,16 @@ export const createMatchmakingRouter = (matchmaking: MatchmakingService, progres
   router.post(
     '/enqueue',
     asyncHandler(async (req: AuthenticatedRequest, res) => {
-      const parsed = enqueueSchema.safeParse(req.body);
-      if (!parsed.success || !req.user) {
+      const queue =
+        req.body?.queue === 'ranked' ||
+        req.body?.queue === 'private' ||
+        req.body?.queue === 'public'
+          ? req.body.queue
+          : 'public';
+      if (!req.user) {
         return res.status(400).json({ message: 'Invalid payload' });
       }
-      const ticket = matchmaking.enqueue(req.user.id, parsed.data.queue);
+      const ticket = matchmaking.enqueue(req.user.id, queue);
       return res.status(202).json({ ticket });
     }),
   );
@@ -52,11 +51,16 @@ export const createMatchmakingRouter = (matchmaking: MatchmakingService, progres
   router.post(
     '/invite',
     asyncHandler(async (req: AuthenticatedRequest, res) => {
-      const parsed = inviteSchema.safeParse(req.body);
-      if (!parsed.success || !req.user) {
+      const queue =
+        req.body?.queue === 'public' ||
+        req.body?.queue === 'ranked' ||
+        req.body?.queue === 'private'
+          ? req.body.queue
+          : 'private';
+      if (!req.user) {
         return res.status(400).json({ message: 'Invalid payload' });
       }
-      const invite = matchmaking.invite(req.user.id, parsed.data.queue);
+      const invite = matchmaking.invite(req.user.id, queue);
       return res.status(201).json({ invite });
     }),
   );
@@ -81,7 +85,13 @@ export const createMatchmakingRouter = (matchmaking: MatchmakingService, progres
       const page = Number(req.query.page ?? 1);
       const pageSize = Number(req.query.pageSize ?? 10);
       const leaderboard = await matchmaking.leaderboard(scope, req.user.id, page, pageSize);
-      return res.json({ leaderboard, scope, page, pageSize, season: progression.getSeasonSnapshot() });
+      return res.json({
+        leaderboard,
+        scope,
+        page,
+        pageSize,
+        season: progression.getSeasonSnapshot(),
+      });
     }),
   );
 

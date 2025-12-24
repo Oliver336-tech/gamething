@@ -1,5 +1,4 @@
 module.exports = {
-  root: true,
   env: {
     browser: true,
     es2024: true,
@@ -29,6 +28,7 @@ module.exports = {
   ],
   rules: {
     'react/react-in-jsx-scope': 'off',
+    '@typescript-eslint/no-explicit-any': 'off',
     'import/order': [
       'warn',
       {
