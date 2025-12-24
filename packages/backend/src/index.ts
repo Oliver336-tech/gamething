@@ -1,41 +1,19 @@
 import { createServer } from 'http';
-import { WebSocketServer } from 'ws';
-
-import type { CombatState } from '@gamething/shared';
 
 import env from './config/env';
 import { createBackendApp } from './app';
+import { RealtimeGameServer } from './realtime/server';
+import { MatchmakingService } from './services/matchmaking';
+import { ProgressionService } from './services/progression';
 
-const { app, getState, applyActionToState } = createBackendApp();
+const progression = new ProgressionService();
+const matchmaking = new MatchmakingService(progression);
+const { app } = createBackendApp({ matchmaking, progression });
 
 const server = createServer(app);
-const wss = new WebSocketServer({ server });
-
-const broadcastState = (nextState: CombatState): void => {
-  const message = JSON.stringify({ type: 'state', payload: nextState });
-  wss.clients.forEach((client) => {
-    if (client.readyState === client.OPEN) {
-      client.send(message);
-    }
-  });
-};
-
-wss.on('connection', (socket) => {
-  socket.send(JSON.stringify({ type: 'state', payload: getState() }));
-
-  socket.on('message', (data) => {
-    try {
-      const payload = JSON.parse(data.toString());
-      if (payload.type === 'action') {
-        const nextState = applyActionToState(payload.action);
-        broadcastState(nextState);
-      }
-    } catch (error) {
-      console.error('Invalid message received', error);
-    }
-  });
-});
+const realtime = new RealtimeGameServer(server, matchmaking);
 
 server.listen(env.PORT, () => {
   console.log(`API listening on http://localhost:${env.PORT}`);
+  console.log(`Realtime matchmaking ready with sandbox session.`);
 });
