@@ -4,7 +4,8 @@
     "jsx": "react-jsx",
     "allowJs": false,
     "outDir": "dist",
-    "rootDir": "src"
+    "rootDir": "src",
+    "types": ["node", "vite/client"]
   },
   "include": ["src", "vite.config.ts", "tailwind.config.ts", "postcss.config.js"],
   "exclude": ["dist"]
