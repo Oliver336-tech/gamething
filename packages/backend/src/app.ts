@@ -7,6 +7,11 @@ import type { Action, CombatState, RngSeed, SimulationConfig } from '@gamething/
 import env from './config/env';
 import adminRouter from './routes/admin';
 import authRouter from './routes/auth';
+import createFriendsRouter from './routes/friends';
+import createHistoryRouter from './routes/history';
+import createMatchmakingRouter from './routes/matchmaking';
+import type { MatchmakingService } from './services/matchmaking';
+import type { ProgressionService } from './services/progression';
 
 const baseSeed: RngSeed = { seed: 1337 };
 
@@ -25,7 +30,7 @@ const startingEntities = [
   },
 ];
 
-export const createBackendApp = () => {
+export const createBackendApp = (deps: { matchmaking: MatchmakingService; progression: ProgressionService }) => {
   let state: CombatState = createCombatState(startingEntities, baseSeed);
   const app = express();
   app.use(cors());
@@ -45,6 +50,9 @@ export const createBackendApp = () => {
 
   app.use('/auth', authRouter);
   app.use('/admin', adminRouter);
+  app.use('/matchmaking', createMatchmakingRouter(deps.matchmaking, deps.progression));
+  app.use('/friends', createFriendsRouter());
+  app.use('/history', createHistoryRouter(deps.matchmaking));
 
   const getState = () => state;
   const setState = (next: CombatState) => {

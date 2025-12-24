@@ -13,12 +13,46 @@ const resolveWsUrl = (): string => {
   const env = import.meta.env;
   return typeof env.VITE_WS_URL === 'string' ? env.VITE_WS_URL : 'ws://localhost:3000';
 };
+import { useEffect, useMemo } from 'react';
+
+import type { Action } from '@gamething/shared';
+
+import { useCombatStore, useLobbyStore, useSocialStore, useWebSocketConnection } from './store';
 
 const wsUrl = resolveWsUrl();
 
 const App = () => {
   useServerSynchronization(wsUrl);
   useDeterministicPlayback();
+  const { state, connectionStatus, sendAction } = useCombatStore();
+  const { queue, ticket, leaderboard, joinQueue, pollTicket, activeMatchId, fetchLeaderboard } = useLobbyStore();
+  const { events, refreshEvents } = useSocialStore();
+
+  const matchId = activeMatchId ?? 'sandbox';
+  useWebSocketConnection(wsUrl, ticket?.userId ?? 'guest', matchId);
+
+  useEffect(() => {
+    fetchLeaderboard('global').catch(() => undefined);
+    refreshEvents().catch(() => undefined);
+  }, [fetchLeaderboard, refreshEvents]);
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      if (ticket?.status === 'queued') {
+        pollTicket().catch(() => undefined);
+      }
+    }, 3000);
+    return () => clearInterval(interval);
+  }, [ticket, pollTicket]);
+
+  const player = useMemo(
+    () => Object.values(state?.entities ?? {}).find((entity) => entity.isPlayerControlled),
+    [state],
+  );
+  const enemies = useMemo(
+    () => Object.values(state?.entities ?? {}).filter((entity) => !entity.isPlayerControlled),
+    [state],
+  );
 
   const identity = useGameStore((state) => state.identity);
   const connectionStatus = useGameStore((state) => state.connectionStatus);
@@ -64,6 +98,70 @@ const App = () => {
           <OnboardingPanel />
           <StoryMapPanel />
         </div>
+        <section className="mb-6 grid gap-4 rounded-lg border border-slate-800 bg-slate-900 p-4 md:grid-cols-3">
+          <div>
+            <p className="text-sm text-slate-400">Queue</p>
+            <p className="text-xl font-semibold capitalize">{queue}</p>
+            <button
+              type="button"
+              className="mt-3 rounded bg-indigo-500 px-3 py-1 text-sm font-semibold text-indigo-50 shadow hover:bg-indigo-400"
+              onClick={() => joinQueue(queue)}
+            >
+              Join {queue} queue
+            </button>
+            <p className="mt-2 text-xs text-slate-400">
+              Ticket: {ticket?.id ?? 'none'} ({ticket?.status ?? 'idle'})
+            </p>
+            <p className="text-xs text-slate-400">Match: {matchId}</p>
+          </div>
+          <div>
+            <p className="text-sm text-slate-400">Leaderboard (top)</p>
+            <ul className="mt-2 space-y-1 text-sm">
+              {leaderboard.slice(0, 5).map((entry, idx) => (
+                <li key={entry.userId} className="flex items-center justify-between rounded bg-slate-800 px-2 py-1">
+                  <span>
+                    #{entry.rank ?? idx + 1} {entry.email ?? entry.userId}
+                  </span>
+                  <span className="font-semibold">{entry.score} LP</span>
+                </li>
+              ))}
+              {leaderboard.length === 0 && <li className="text-slate-500">No entries yet.</li>}
+            </ul>
+          </div>
+          <div>
+            <p className="text-sm text-slate-400">Recent Events</p>
+            <ul className="mt-2 space-y-1 text-sm">
+              {events.map((event) => (
+                <li key={event.matchId} className="rounded bg-slate-800 px-2 py-1">
+                  {event.note} · <span className="text-slate-400">{event.status}</span>
+                </li>
+              ))}
+              {events.length === 0 && <li className="text-slate-500">Nothing recorded.</li>}
+            </ul>
+          </div>
+        </section>
+
+        <main className="grid gap-6 md:grid-cols-2">
+          <section className="rounded-lg border border-slate-800 bg-slate-900 p-4 shadow">
+            <h2 className="text-lg font-semibold">Party</h2>
+            {player ? (
+              <div className="mt-4 rounded bg-slate-800 p-3">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-sm uppercase tracking-wide text-slate-400">{player.name}</p>
+                    <p className="text-2xl font-bold">{player.stats.health} HP</p>
+                  </div>
+                  <div className="text-right text-sm text-slate-300">
+                    <p>ATK {player.stats.attack}</p>
+                    <p>DEF {player.stats.defense}</p>
+                    <p>SPD {player.stats.speed}</p>
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <p className="mt-2 text-sm text-slate-400">Waiting for state...</p>
+            )}
+          </section>
 
         <ModesPanel />
 
