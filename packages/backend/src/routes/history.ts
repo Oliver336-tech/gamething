@@ -1,7 +1,7 @@
 import { Router } from 'express';
-import asyncHandler from 'express-async-handler';
 
 import { prisma } from '../db/client';
+import { asyncHandler } from '../lib/asyncHandler';
 import { authenticate, type AuthenticatedRequest } from '../middleware/auth';
 import type { MatchmakingService } from '../services/matchmaking';
 
@@ -26,7 +26,7 @@ export const createHistoryRouter = (matchmaking: MatchmakingService) => {
       return res.json({
         page,
         pageSize: take,
-        results: matches.map((match) => ({
+        results: matches.map((match: any) => ({
           id: match.id,
           status: match.status,
           startedAt: match.startedAt,
@@ -47,7 +47,7 @@ export const createHistoryRouter = (matchmaking: MatchmakingService) => {
         orderBy: { startedAt: 'desc' },
         take: 5,
       });
-      const events = recentMatches.map((match) => ({
+      const events = recentMatches.map((match: any) => ({
         matchId: match.id,
         status: match.status,
         note: match.winnerId === req.user?.id ? 'Victory' : 'Battle recorded',

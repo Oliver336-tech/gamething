@@ -2,10 +2,10 @@
   "extends": "../../tsconfig.base.json",
   "compilerOptions": {
     "outDir": "dist",
-    "rootDir": "src",
+    "rootDir": "..",
     "resolveJsonModule": true,
-    "types": ["node", "vitest/globals"]
+    "types": ["node"]
   },
-  "include": ["src"],
-  "exclude": ["dist"]
+  "include": ["src", "../engine/src/**/*", "../shared/src/**/*"],
+  "exclude": ["dist", "src/__tests__"]
 }

@@ -53,8 +53,7 @@ export const createRngState = (seed: RngSeed): RngState => ({
 });
 
 export const nextRandom = (rng: RngState): { state: RngState; value: number } => {
-  const nextValue =
-    (rng.multiplier * rng.last + rng.increment) % rng.modulus || rng.increment;
+  const nextValue = (rng.multiplier * rng.last + rng.increment) % rng.modulus || rng.increment;
   const newState: RngState = { ...rng, last: nextValue };
   return { state: newState, value: nextValue / rng.modulus };
 };
@@ -81,12 +80,18 @@ const normalizeStatus = (status: StatusEffect): StatusEffect => {
 };
 
 const getStatusStacks = (entity: Entity, type: StatusType): number =>
-  (entity.statuses ?? []).filter((status) => status.type === type).reduce((acc, cur) => acc + cur.stacks, 0);
+  (entity.statuses ?? [])
+    .filter((status) => status.type === type)
+    .reduce<number>((acc, cur: StatusEffect) => acc + cur.stacks, 0);
 
 const getStatusPotency = (entity: Entity, type: StatusType): number =>
   (entity.statuses ?? [])
     .filter((status) => status.type === type)
-    .reduce((acc, cur) => acc + (cur.potency ?? statusDefaults[type].basePotency) * cur.stacks, 0);
+    .reduce<number>(
+      (acc, cur: StatusEffect) =>
+        acc + (cur.potency ?? statusDefaults[type].basePotency) * cur.stacks,
+      0,
+    );
 
 const mergeStatuses = (existing: StatusEffect[], incoming: StatusEffect[]): StatusEffect[] => {
   const combined = [...existing];
@@ -189,9 +194,15 @@ const describeAction = (action: Action, damage: number, note?: string): string =
   }
 };
 
-const updateChargeMeter = (ce: NonNullable<Entity['ce']>, delta: number): NonNullable<Entity['ce']> => {
+const updateChargeMeter = (
+  ce: NonNullable<Entity['ce']>,
+  delta: number,
+): NonNullable<Entity['ce']> => {
   const nextCurrent = clamp(ce.current + delta, 0, MAX_CE);
-  const tier = ce.tiers.reduce((acc, threshold, index) => (nextCurrent >= threshold ? index + 1 : acc), 0);
+  const tier = ce.tiers.reduce<number>(
+    (acc: number, threshold: number, index: number) => (nextCurrent >= threshold ? index + 1 : acc),
+    0,
+  );
   return { ...ce, current: nextCurrent, tier };
 };
 
@@ -264,7 +275,9 @@ const applyStatusTicks = (
 
   const afterglow = nextStatuses.find((effect) => effect.type === 'Afterglow');
   if (afterglow) {
-    const bonusDuration = Math.round(deltaMs * (afterglow.potency ?? statusDefaults.Afterglow.basePotency));
+    const bonusDuration = Math.round(
+      deltaMs * (afterglow.potency ?? statusDefaults.Afterglow.basePotency),
+    );
     nextStatuses = nextStatuses.map((effect) =>
       ['Shield', 'Regen', 'Haste', 'Dodge'].includes(effect.type)
         ? { ...effect, durationMs: effect.durationMs + bonusDuration }
@@ -311,7 +324,13 @@ const resolveSkill = (
   actor: Entity,
   action: Action,
   mode: BattleMode,
-): { multiplier: number; ceGain: number; statuses: StatusEffect[]; healPercent?: number; prevented?: boolean } => {
+): {
+  multiplier: number;
+  ceGain: number;
+  statuses: StatusEffect[];
+  healPercent?: number;
+  prevented?: boolean;
+} => {
   const kit = CHARACTER_KITS[actor.characterId as CharacterId];
   const skillKey =
     (action.metadata?.skill as string) ??
@@ -356,7 +375,8 @@ export const applyAction = (
   }
 
   const actorBound = getStatusStacks(actor, 'Bind') > 0;
-  const effectiveAction: Action = actorBound && action.type !== 'wait' ? { ...action, type: 'wait' } : action;
+  const effectiveAction: Action =
+    actorBound && action.type !== 'wait' ? { ...action, type: 'wait' } : action;
 
   const { state: updatedRng, value } = nextRandom(state.rng);
   const variance = 0.85 + value * 0.3;
@@ -419,7 +439,9 @@ export const applyAction = (
 
   let baseDamage = 0;
   const isOffensive =
-    effectiveAction.type === 'attack' || effectiveAction.type === 'ability' || effectiveAction.type === 'burst';
+    effectiveAction.type === 'attack' ||
+    effectiveAction.type === 'ability' ||
+    effectiveAction.type === 'burst';
   if (isOffensive) {
     baseDamage = Math.max(
       0,
@@ -492,13 +514,16 @@ const advanceTime = (
 ): { state: CombatState; rng: RngState } => {
   let rngState = state.rng;
   let log = [...state.log];
-  const updatedEntities = Object.values(state.entities).reduce<CombatState['entities']>((acc, entity) => {
-    const tickResult = applyStatusTicks(entity, deltaMs, rngState, state.round);
-    rngState = tickResult.rng;
-    log = [...log, ...tickResult.logs];
-    acc[entity.id] = tickResult.entity;
-    return acc;
-  }, {});
+  const updatedEntities = Object.values(state.entities).reduce<CombatState['entities']>(
+    (acc, entity) => {
+      const tickResult = applyStatusTicks(entity, deltaMs, rngState, state.round);
+      rngState = tickResult.rng;
+      log = [...log, ...tickResult.logs];
+      acc[entity.id] = tickResult.entity;
+      return acc;
+    },
+    {},
+  );
 
   return {
     state: {
@@ -518,19 +543,23 @@ export const simulateRound = (
   config: SimulationConfig,
 ): SimulationResult => {
   const normalizedConfig = normalizeConfig(config);
-  let currentState = { ...state, mode: normalizedConfig.mode };
+  let currentState: CombatState = { ...state, mode: normalizedConfig.mode };
   let completed = false;
 
   for (const action of actions) {
-    const advanced = advanceTime(currentState, normalizedConfig.tickIntervalMs ?? DEFAULT_TICK_INTERVAL);
+    const advanced = advanceTime(
+      currentState,
+      normalizedConfig.tickIntervalMs ?? DEFAULT_TICK_INTERVAL,
+    );
     currentState = advanced.state;
     const resolution = applyAction(currentState, action, normalizedConfig);
     currentState = advanceTurn(resolution.newState, normalizedConfig);
 
-    const actorsAlive = Object.values(currentState.entities).some(
+    const entities = Object.values(currentState.entities) as Entity[];
+    const actorsAlive = entities.some(
       (entity) => entity.stats.health > 0 && entity.isPlayerControlled,
     );
-    const enemiesAlive = Object.values(currentState.entities).some(
+    const enemiesAlive = entities.some(
       (entity) => entity.stats.health > 0 && !entity.isPlayerControlled,
     );
 
@@ -570,38 +599,35 @@ const kit = (
 });
 
 export const CHARACTER_KITS: Record<CharacterId, CharacterKit> = {
-  sophia: kit(
-    'sophia',
-    {
-      title: 'Radiant Duelist',
-      description: 'Focuses on regen and afterglow windows.',
-      baseStats: { health: 120, maxHealth: 120, attack: 16, defense: 8, speed: 12 },
-      passives: [
-        {
-          name: 'Glow Within',
-          description: 'Gain Afterglow on ability use to extend buffs.',
-          onAction: 'ability',
-          effect: { type: 'Afterglow', durationMs: 5000, stacks: 1 },
-        },
-      ],
-      chargedSkill: {
-        name: 'Radiant Thrust',
-        description: 'Heals lightly and applies Afterglow.',
-        bonusMultiplier: 1.2,
-        healPercent: 0.08,
-        statusApplies: [{ type: 'Afterglow', durationMs: 6000, stacks: 1 }],
-        ceGain: 14,
+  sophia: kit('sophia', {
+    title: 'Radiant Duelist',
+    description: 'Focuses on regen and afterglow windows.',
+    baseStats: { health: 120, maxHealth: 120, attack: 16, defense: 8, speed: 12 },
+    passives: [
+      {
+        name: 'Glow Within',
+        description: 'Gain Afterglow on ability use to extend buffs.',
+        onAction: 'ability',
+        effect: { type: 'Afterglow', durationMs: 5000, stacks: 1 },
       },
-      burst: {
-        name: 'Sunrise Bloom',
-        description: 'High damage burst that applies Regen to allies.',
-        bonusMultiplier: 2.1,
-        statusApplies: [{ type: 'Regen', durationMs: 6000, stacks: 2 }],
-        burstCost: 45,
-        ceGain: -45,
-      },
+    ],
+    chargedSkill: {
+      name: 'Radiant Thrust',
+      description: 'Heals lightly and applies Afterglow.',
+      bonusMultiplier: 1.2,
+      healPercent: 0.08,
+      statusApplies: [{ type: 'Afterglow', durationMs: 6000, stacks: 1 }],
+      ceGain: 14,
     },
-  ),
+    burst: {
+      name: 'Sunrise Bloom',
+      description: 'High damage burst that applies Regen to allies.',
+      bonusMultiplier: 2.1,
+      statusApplies: [{ type: 'Regen', durationMs: 6000, stacks: 2 }],
+      burstCost: 45,
+      ceGain: -45,
+    },
+  }),
   endrit: kit('endrit', {
     title: 'Flamecaller',
     description: 'Stacking burn specialist.',
@@ -808,7 +834,14 @@ const makeEncounter = (
   biome: string,
   power: number,
   boss?: string,
-): { id: string; name: string; biome: string; recommendedPower: number; boss?: string; enemies: string[] } => ({
+): {
+  id: string;
+  name: string;
+  biome: string;
+  recommendedPower: number;
+  boss?: string;
+  enemies: string[];
+} => ({
   id,
   name,
   biome,
@@ -863,9 +896,7 @@ export const GAME_MODULES: GameModule[] = [
     id: 'playground',
     name: 'Playground',
     description: 'Sandbox to test kits without rank rules.',
-    encounters: [
-      makeEncounter('playground-1', 'Training Dummy', 'dojo', 10, 'Training Boss'),
-    ],
+    encounters: [makeEncounter('playground-1', 'Training Dummy', 'dojo', 10, 'Training Boss')],
     scaling: 'fixed',
     mode: 'sandbox',
   },
