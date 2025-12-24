@@ -1,0 +1,87 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model Role {
+  id    Int     @id @default(autoincrement())
+  name  String  @unique
+  users User[]
+}
+
+model User {
+  id             String       @id @default(cuid())
+  email          String       @unique
+  passwordHash   String
+  roleId         Int
+  role           Role         @relation(fields: [roleId], references: [id])
+  sessions       Session[]
+  friendships    Friendship[] @relation("Requester")
+  friendsOf      Friendship[] @relation("Addressee")
+  progress       Progression?
+  leaderboard    LeaderboardEntry[]
+  matchesWon     Match[]      @relation("Winner")
+  matchesPlayed  Match[]      @relation("Participant")
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+}
+
+model Session {
+  id               String   @id @default(cuid())
+  userId           String
+  user             User     @relation(fields: [userId], references: [id])
+  refreshTokenHash String
+  expiresAt        DateTime
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+}
+
+model Friendship {
+  id           String   @id @default(cuid())
+  requesterId  String
+  requester    User     @relation("Requester", fields: [requesterId], references: [id])
+  addresseeId  String
+  addressee    User     @relation("Addressee", fields: [addresseeId], references: [id])
+  status       String
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@unique([requesterId, addresseeId])
+}
+
+model Match {
+  id            String   @id @default(cuid())
+  status        String
+  startedAt     DateTime @default(now())
+  endedAt       DateTime?
+  winnerId      String?
+  winner        User?    @relation("Winner", fields: [winnerId], references: [id])
+  participantId String
+  participant   User     @relation("Participant", fields: [participantId], references: [id])
+}
+
+model Progression {
+  id         String   @id @default(cuid())
+  userId     String   @unique
+  user       User     @relation(fields: [userId], references: [id])
+  level      Int      @default(1)
+  experience Int      @default(0)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+}
+
+model LeaderboardEntry {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id])
+  score     Int
+  rank      Int?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([userId])
+}
