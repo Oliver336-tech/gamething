@@ -1,0 +1,12 @@
+node_modules
+.DS_Store
+dist
+build
+.cache
+coverage
+npm-debug.log*
+.husky/_
+pnpm-lock.yaml
+yarn.lock
+.vscode
+.env
