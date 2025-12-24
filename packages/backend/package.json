@@ -1,0 +1,28 @@
+{
+  "name": "@gamething/backend",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "dist/index.js",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "start": "node dist/index.js",
+    "dev": "ts-node src/index.ts",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "lint": "eslint 'src/**/*.{ts,tsx}'",
+    "format": "prettier --write 'src/**/*.{ts,tsx,json}'"
+  },
+  "dependencies": {
+    "@gamething/engine": "file:../engine",
+    "@gamething/shared": "file:../shared",
+    "cors": "^2.8.5",
+    "express": "^4.19.2",
+    "ws": "^8.18.0"
+  },
+  "devDependencies": {
+    "@types/express": "^4.17.21",
+    "@types/node": "^22.0.0",
+    "@types/ws": "^8.5.10",
+    "ts-node": "^10.9.2"
+  }
+}
